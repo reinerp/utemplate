@@ -1,5 +1,5 @@
 pub use utemplate_macro::fmt;
-use lexical::ToLexical;
+use lexical_core::ToLexical;
 
 pub trait TDisplay {
     fn tdisplay_to(self, dst: &mut String);
