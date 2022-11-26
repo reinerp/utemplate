@@ -1,4 +1,5 @@
 pub use utemplate_macro::fmt;
+use lexical::ToLexical;
 
 pub trait TDisplay {
     fn tdisplay_to(self, dst: &mut String);
@@ -10,65 +11,51 @@ impl<'a> TDisplay for &'a str {
     }
 }
 
-fn integer_display_to<T: itoa::Integer>(value: T, dst: &mut String) {
-    let mut buf = itoa::Buffer::new();
-    dst.push_str(buf.format(value));
+unsafe fn lexical_display_to<T: ToLexical>(value: T, dst: &mut String) {
+    // Safety: for our trusted instances of ToLexical, it is guaranteed to return UTF-8.
+    let dst = dst.as_mut_vec();
+    let orig_len = dst.len();
+    dst.resize(orig_len + T::FORMATTED_SIZE_DECIMAL, 0);
+    // Safety: we have (exactly) T::FORMATTED_SIZE_DECIMAL space in the buffer.
+    let written_len = value.to_lexical_unchecked(&mut dst[orig_len..]).len();
+    // Safety: we have written exactly `written_len` bytes past the original length.
+    dst.set_len(orig_len + written_len);
 }
 
-// TDisplay for Integer types
-macro_rules! integer_tdisplay {
+// TDisplay for ToLexical types
+macro_rules! impl_tdisplay {
     ($($t:ty),*) => {
         $(
             impl TDisplay for $t {
                 fn tdisplay_to(self, dst: &mut String) {
-                    integer_display_to(self, dst);
+                    unsafe {
+                        // Safety: we trust the implementation of ToLexical on the types
+                        // below.
+                        lexical_display_to(self, dst);
+                    }
                 }
             }
 
             impl<'a> TDisplay for &'a $t {
                 fn tdisplay_to(self, dst: &mut String) {
-                    integer_display_to(*self, dst);
+                    TDisplay::tdisplay_to(*self, dst);
                 }
             }
         )*
     };
 }
 // impl_display for all integer and float types:
-integer_tdisplay!(u8);
-integer_tdisplay!(u16);
-integer_tdisplay!(u32);
-integer_tdisplay!(u64);
-integer_tdisplay!(u128);
-integer_tdisplay!(usize);
-integer_tdisplay!(i8);
-integer_tdisplay!(i16);
-integer_tdisplay!(i32);
-integer_tdisplay!(i64);
-integer_tdisplay!(i128);
-integer_tdisplay!(isize);
-
-fn float_display_to<T: ryu::Float>(value: T, dst: &mut String) {
-    let mut buf = ryu::Buffer::new();
-    dst.push_str(buf.format(value));
-}
-
-// TDisplay for Float types
-macro_rules! float_tdisplay {
-    ($($t:ty),*) => {
-        $(
-            impl TDisplay for $t {
-                fn tdisplay_to(self, dst: &mut String) {
-                    float_display_to(self, dst);
-                }
-            }
-
-            impl<'a> TDisplay for &'a $t {
-                fn tdisplay_to(self, dst: &mut String) {
-                    float_display_to(*self, dst);
-                }
-            }
-        )*
-    };
-}
-float_tdisplay!(f32);
-float_tdisplay!(f64);
+impl_tdisplay!(u8);
+impl_tdisplay!(u16);
+impl_tdisplay!(u32);
+impl_tdisplay!(u64);
+impl_tdisplay!(u128);
+impl_tdisplay!(usize);
+impl_tdisplay!(i8);
+impl_tdisplay!(i16);
+impl_tdisplay!(i32);
+impl_tdisplay!(i64);
+impl_tdisplay!(i128);
+impl_tdisplay!(isize);
+impl_tdisplay!(f32);
+impl_tdisplay!(f64);
